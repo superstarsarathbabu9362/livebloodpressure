@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioTelemetry | Live ECG Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        // Firebase Configuration Setup
+        const firebaseConfig = {
+  apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
+  authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
+  databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "blood-pressure-monitorin-2f4c5",
+  storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
+  messagingSenderId: "206648891688",
+  appId: "1:206648891688:web:82f6f64151c4568dfc581d"
+};
+        // Initialize Engine
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Chart Initialization Variables
+        const ctx = document.getElementById('ecgChart').getContext('2d');
+        const maxDataPoints = 120; // Horizon window width
+        const initialLabels = Array(maxDataPoints).fill('');
+        const initialData = Array(maxDataPoints).fill(2048);
+
+        // Create Glowing Gradient for the ECG Line
+        const glowGradient = ctx.createLinearGradient(0, 0, 0, 400);
+        glowGradient.addColorStop(0, 'rgba(0, 255, 136, 0.2)');
+        glowGradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+
+        const ecgChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: initialLabels,
+                datasets: [{
+                    label: 'ECG Live Stream',
+                    data: initialData,
+                    borderColor: '#00ff88',
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    fill: true,
+                    backgroundColor: glowGradient,
+                    tension: 0.15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { display: false },
+                    y: {
+                        min: 1200,
+                        max: 3000,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            borderColor: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: { color: '#8a99ad', font: { family: 'monospace' } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+
+        // Live Database Listener Interlocks
+        const liveEcgRef = ref(database, 'liveValue');
+        let lastValue = 2048;
+
+        onValue(liveEcgRef, (snapshot) => {
+            const val = snapshot.val();
+            if (val !== null) {
+                document.getElementById('rawSignalValue').innerText = val;
+                
+                // Update Network Status Text Indicators dynamically
+                const indicator = document.getElementById('statusIndicator');
+                indicator.innerText = "ONLINE_STREAMING";
+                indicator.style.color = "#00ff88";
+
+                ecgChart.data.datasets[0].data.push(val);
+                if (ecgChart.data.datasets[0].data.length > maxDataPoints) {
+                    ecgChart.data.datasets[0].data.shift();
+                }
+                ecgChart.update('none'); // Render frame natively without internal animation latency
+                lastValue = val;
+            }
+        });
+
+        // Network Timeout Fallback Interlock logic
+        setInterval(() => {
+            const indicator = document.getElementById('statusIndicator');
+            if (Date.now() - ecgChart.lastUpdate > 3000) {
+                indicator.innerText = "SYSTEM_OFFLINE";
+                indicator.style.color = "#ff3366";
+            }
+        }, 3000);
+    </script>
+
+    <style>
+        :root {
+            --bg-primary: #0a0f1d;
+            --bg-secondary: #131c31;
+            --accent-green: #00ff88;
+            --accent-blue: #00bfff;
+            --text-main: #ffffff;
+            --text-muted: #8a99ad;
+            --border-color: #1e2942;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard-layout {
+            width: 100%;
+            max-width: 1100px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(45deg, var(--text-main), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand p {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .live-tag {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-tag::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+
+        .main-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        .card-header {
+            margin-bottom: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 380px;
+            width: 100%;
+            background-color: #050811;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.02);
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+        }
+
+        .metric-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-size: 36px;
+            font-weight: 700;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--text-main);
+        }
+
+        .value-unit {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: 4px;
+        }
+
+        #rawSignalValue {
+            color: var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-layout">
+        
+        <header>
+            <div class="brand">
+                <h1>BIOTELEMETRY CORE</h1>
+                <p>Patient Vital-Signs Stream</p>
+            </div>
+            <div class="live-tag">REALTIME DATA LINK</div>
+        </header>
+
+        <div class="main-card">
+            <div class="card-header">Electrocardiogram Waveform</div>
+            <div class="chart-wrapper">
+                <canvas id="ecgChart"></canvas>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">ADC Amplitude Stream</div>
+                <div class="metric-value"><span id="rawSignalValue">2048</span><span class="value-unit">mV</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Telemetry Pipeline</div>
+                <div class="metric-value" id="statusIndicator" style="font-size: 20px; margin-top: 14px; color: var(--accent-blue); font-family: -apple-system, sans-serif;">
+                    INITIALIZING...
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>
