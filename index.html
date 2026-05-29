@@ -340,7 +340,6 @@
     </div>
 
     <script>
-        // Global variables initialized later to prevent startup layout crashes
         let database;
         let canvas, ctx;
         let currentX = 0;
@@ -350,8 +349,8 @@
         let pointHistory = [];
         let lastDataTimestamp = 0;
         let isDeviceOnline = false;
+        let listenersAttached = false; // Guard flag to prevent double processing logs
 
-        // Firebase Configuration Registry
         const firebaseConfig = {
             apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
             authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
@@ -362,9 +361,6 @@
             appId: "1:206648891688:web:82f6f64151c4568dfc581d"
         };
 
-        // =========================================================================
-        // PORTAL SECURITY GATEKEEPER (With Safety Assertions)
-        // =========================================================================
         function validateAccess() {
             try {
                 const user = document.getElementById('username-input').value;
@@ -372,14 +368,10 @@
                 const errorMsg = document.getElementById('login-error');
 
                 if (user === "admin" && pass === "12345") {
-                    // 1. Reveal layout layers first so widths/heights populate cleanly
                     document.getElementById('login-container').style.display = 'none';
                     document.getElementById('main-dashboard').style.display = 'block';
                     
-                    // 2. Safely build graphics workspace framework
                     setupGraphicsEngine();
-                    
-                    // 3. Fire Up Data Pipelines
                     initializeFirebaseStream();
                 } else {
                     errorMsg.style.display = 'block';
@@ -387,30 +379,23 @@
                 }
             } catch (err) {
                 alert("Runtime Dashboard Init Fault: " + err.message);
-                console.error(err);
             }
         }
 
-        // =========================================================================
-        // CANVAS SYSTEM GRAPHICS FRAMEWORK SETUP
-        // =========================================================================
         function setupGraphicsEngine() {
             canvas = document.getElementById('ecgCanvas');
             ctx = canvas.getContext('2d');
             
-            // Re-read sizing metrics now that display: block is active
             resizeCanvas();
             lastY = canvas.height / 2;
             pointHistory = new Array(Math.ceil(canvas.width));
             
             window.addEventListener('resize', resizeCanvas);
 
-            // Seed initial frame state
             ctx.fillStyle = '#050807';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             drawGridBackground();
             
-            // Kick off the loop
             renderSweepTrace();
         }
 
@@ -473,28 +458,42 @@
         }
 
         // =========================================================================
-        // FIREBASE INTERFACE STREAM INITIALIZATION
+        // SAFE FIREBASE AUTH & AUTO PERSISTENCE LAYER
         // =========================================================================
         function initializeFirebaseStream() {
-            // Safety Intercept: Ensure script elements loaded correctly via CDN
             if (typeof firebase === 'undefined') {
-                alert("Critical System Intercept: Firebase SDK packages were blocked by your browser extensions or network firewall. Please disable tracking shields or ad-blockers on this page.");
+                alert("Critical System Intercept: Firebase SDK packages were blocked.");
                 return;
             }
 
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
-                
-                firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
-                    .then(() => {
-                        console.log("Web Client Authenticated.");
-                        database = firebase.database();
-                        attachDataListeners();
-                    })
-                    .catch((error) => {
-                        alert("Database Authentication Reference Error: " + error.message);
-                    });
             }
+
+            // Monitor Auth State instead of blindly forcing a new server request
+            firebase.auth().onAuthStateChanged((user) => {
+                if (user) {
+                    console.log("Authenticated via persistent session profile.");
+                    database = firebase.database();
+                    if (!listenersAttached) {
+                        attachDataListeners();
+                        listenersAttached = true;
+                    }
+                } else {
+                    // No cached session found, execute single baseline login request
+                    firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
+                        .then(() => {
+                            console.log("New Session Created.");
+                        })
+                        .catch((error) => {
+                            if (error.code === 'auth/too-many-requests') {
+                                alert("Firebase Request Blocked: Connect your computer to a mobile hotspot or wait 15 minutes to clear your IP layout block.");
+                            } else {
+                                alert("Database Authentication Reference Error: " + error.message);
+                            }
+                        });
+                }
+            });
         }
 
         function attachDataListeners() {
@@ -523,7 +522,6 @@
                 }
             });
 
-            // Watchdog Loop Evaluation Run
             setInterval(() => {
                 const timeSinceLastPacket = Date.now() - lastDataTimestamp;
 
@@ -543,7 +541,7 @@
                     if (!isDeviceOnline) {
                         isDeviceOnline = true;
                         hardwareStatus.innerText = "ECGLIVEMONITOR ONLINE";
-                        hardwareStatus.classList.add('online');
+                        hardwareStatus.add('online');
                         offlineOverlay.style.display = 'none';
                         
                         cardPulse.classList.remove('system-muted');
