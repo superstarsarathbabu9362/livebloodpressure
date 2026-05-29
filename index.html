@@ -47,7 +47,6 @@
             justify-content: center;
             align-items: center;
             z-index: 9999;
-            transition: opacity 0.5s ease;
         }
 
         .login-card {
@@ -194,7 +193,6 @@
             height: 450px;
             background-color: #050807;
             border-radius: 2px;
-            transition: filter 0.3s ease;
         }
 
         .vitals-sidebar {
@@ -212,7 +210,6 @@
             flex-direction: column;
             justify-content: space-between;
             min-height: 215px;
-            transition: opacity 0.3s ease;
         }
 
         .vital-card .card-header {
@@ -343,82 +340,86 @@
     </div>
 
     <script>
-        // =========================================================================
-        // PORTAL SECURITY GATEKEEPER
-        // =========================================================================
-        function validateAccess() {
-            const user = document.getElementById('username-input').value;
-            const pass = document.getElementById('password-input').value;
-            const errorMsg = document.getElementById('login-error');
-
-            if(user === "admin" && pass === "12345") {
-                document.getElementById('login-container').style.display = 'none';
-                document.getElementById('main-dashboard').style.display = 'block';
-                resizeCanvas(); 
-                initializeFirebaseStream();
-            } else {
-                errorMsg.style.display = 'block';
-                setTimeout(() => { errorMsg.style.display = 'none'; }, 4000);
-            }
-        }
-
-        // =========================================================================
-        // FIREBASE SETTINGS CORE CONFIGURATION
-        // =========================================================================const firebaseConfig = {
-  apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
-  authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
-  databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "blood-pressure-monitorin-2f4c5",
-  storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
-  messagingSenderId: "206648891688",
-  appId: "1:206648891688:web:82f6f64151c4568dfc581d"
-};
-
+        // Global variables initialized later to prevent startup layout crashes
         let database;
-        function initializeFirebaseStream() {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-                
-                // Authenticate web client to clear secure rules validation rules
-                firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
-                    .then(() => {
-                        console.log("Web Client Authenticated Successfully.");
-                        database = firebase.database();
-                        attachDataListeners();
-                    })
-                    .catch((error) => {
-                        console.error("Authentication Reference Error: ", error.message);
-                    });
-            }
-        }
-
-        const hardwareStatus = document.getElementById('hardware-status');
-        const offlineOverlay = document.getElementById('offline-overlay');
-        const pulseDisplay = document.getElementById('val-pulse');
-        const bpDisplay = document.getElementById('val-bp');
-        const cardPulse = document.getElementById('card-pulse');
-        const cardBp = document.getElementById('card-bp');
-
+        let canvas, ctx;
+        let currentX = 0;
+        let lastY = 0;
+        const targetSpeed = 2.5; 
+        let latestFirebaseEcg = 2048; 
+        let pointHistory = [];
         let lastDataTimestamp = 0;
         let isDeviceOnline = false;
 
+        // Firebase Configuration Registry
+        const firebaseConfig = {
+            apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
+            authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
+            databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "blood-pressure-monitorin-2f4c5",
+            storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
+            messagingSenderId: "206648891688",
+            appId: "1:206648891688:web:82f6f64151c4568dfc581d"
+        };
+
         // =========================================================================
-        // CANVAS GRAPHING DESIGN ENGINE
+        // PORTAL SECURITY GATEKEEPER (With Safety Assertions)
         // =========================================================================
-        const canvas = document.getElementById('ecgCanvas');
-        const ctx = canvas.getContext('2d');
+        function validateAccess() {
+            try {
+                const user = document.getElementById('username-input').value;
+                const pass = document.getElementById('password-input').value;
+                const errorMsg = document.getElementById('login-error');
+
+                if (user === "admin" && pass === "12345") {
+                    // 1. Reveal layout layers first so widths/heights populate cleanly
+                    document.getElementById('login-container').style.display = 'none';
+                    document.getElementById('main-dashboard').style.display = 'block';
+                    
+                    // 2. Safely build graphics workspace framework
+                    setupGraphicsEngine();
+                    
+                    // 3. Fire Up Data Pipelines
+                    initializeFirebaseStream();
+                } else {
+                    errorMsg.style.display = 'block';
+                    setTimeout(() => { errorMsg.style.display = 'none'; }, 4000);
+                }
+            } catch (err) {
+                alert("Runtime Dashboard Init Fault: " + err.message);
+                console.error(err);
+            }
+        }
+
+        // =========================================================================
+        // CANVAS SYSTEM GRAPHICS FRAMEWORK SETUP
+        // =========================================================================
+        function setupGraphicsEngine() {
+            canvas = document.getElementById('ecgCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Re-read sizing metrics now that display: block is active
+            resizeCanvas();
+            lastY = canvas.height / 2;
+            pointHistory = new Array(Math.ceil(canvas.width));
+            
+            window.addEventListener('resize', resizeCanvas);
+
+            // Seed initial frame state
+            ctx.fillStyle = '#050807';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawGridBackground();
+            
+            // Kick off the loop
+            renderSweepTrace();
+        }
 
         function resizeCanvas() {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
+            if (canvas) {
+                canvas.width = canvas.clientWidth || 800;
+                canvas.height = canvas.clientHeight || 450;
+            }
         }
-        window.addEventListener('resize', resizeCanvas);
-
-        let currentX = 0;
-        let lastY = canvas.height / 2;
-        const targetSpeed = 2.5; 
-        let latestFirebaseEcg = 2048; 
-        let pointHistory = new Array(Math.ceil(canvas.width));
 
         function drawGridBackground() {
             ctx.strokeStyle = '#14221c';
@@ -432,7 +433,7 @@
         }
 
         function renderSweepTrace() {
-            if (isDeviceOnline) {
+            if (isDeviceOnline && canvas) {
                 const W = canvas.width;
                 const H = canvas.height;
                 const eraseWidth = 25; 
@@ -471,15 +472,39 @@
             requestAnimationFrame(renderSweepTrace);
         }
 
-        ctx.fillStyle = '#050807';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        drawGridBackground();
-        renderSweepTrace();
+        // =========================================================================
+        // FIREBASE INTERFACE STREAM INITIALIZATION
+        // =========================================================================
+        function initializeFirebaseStream() {
+            // Safety Intercept: Ensure script elements loaded correctly via CDN
+            if (typeof firebase === 'undefined') {
+                alert("Critical System Intercept: Firebase SDK packages were blocked by your browser extensions or network firewall. Please disable tracking shields or ad-blockers on this page.");
+                return;
+            }
 
-        // =========================================================================
-        // FIREBASE DATA WORKSPACE CONSUMPTION WATCHDOG
-        // =========================================================================
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+                
+                firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
+                    .then(() => {
+                        console.log("Web Client Authenticated.");
+                        database = firebase.database();
+                        attachDataListeners();
+                    })
+                    .catch((error) => {
+                        alert("Database Authentication Reference Error: " + error.message);
+                    });
+            }
+        }
+
         function attachDataListeners() {
+            const hardwareStatus = document.getElementById('hardware-status');
+            const offlineOverlay = document.getElementById('offline-overlay');
+            const pulseDisplay = document.getElementById('val-pulse');
+            const bpDisplay = document.getElementById('val-bp');
+            const cardPulse = document.getElementById('card-pulse');
+            const cardBp = document.getElementById('card-bp');
+
             database.ref('device_01/liveValue').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val !== null) {
@@ -498,6 +523,7 @@
                 }
             });
 
+            // Watchdog Loop Evaluation Run
             setInterval(() => {
                 const timeSinceLastPacket = Date.now() - lastDataTimestamp;
 
