@@ -356,7 +356,6 @@
         const targetSpeed = 2.5; 
         let latestFirebaseEcg = 2048; 
         let pointHistory = [];
-        let lastDataTimestamp = 0;
         let isDeviceOnline = false;
         let listenersAttached = false;
 
@@ -474,7 +473,6 @@
                 firebase.initializeApp(firebaseConfig);
             }
 
-            // Secure session change tracker (No hardcoded credentials)
             firebase.auth().onAuthStateChanged((user) => {
                 if (user) {
                     database = firebase.database();
@@ -483,7 +481,6 @@
                         listenersAttached = true;
                     }
                 } else {
-                    // Logs browser tab in as a unique, independent guest to bypass credential firewalls
                     firebase.auth().signInAnonymously()
                         .catch((error) => {
                             const hardwareStatus = document.getElementById('hardware-status');
@@ -503,14 +500,42 @@
             const cardPulse = document.getElementById('card-pulse');
             const cardBp = document.getElementById('card-bp');
 
+            // --- LISTEN DIRECTLY TO THE SYNCED STATUS NODE FROM ESP32 ---
+            database.ref('device_01/status').on('value', (snapshot) => {
+                const status = snapshot.val();
+                
+                if (status === "online") {
+                    isDeviceOnline = true;
+                    if (hardwareStatus.innerText !== "AUTH TIMEOUT") {
+                        hardwareStatus.innerText = "ESP32 ONLINE";
+                        hardwareStatus.className = "status-badge online";
+                    }
+                    offlineOverlay.style.display = 'none';
+                    cardPulse.classList.remove('system-muted');
+                    cardBp.classList.remove('system-muted');
+                } else {
+                    isDeviceOnline = false;
+                    if (hardwareStatus.innerText !== "AUTH TIMEOUT") {
+                        hardwareStatus.innerText = "ESP32 OFFLINE";
+                        hardwareStatus.className = "status-badge";
+                    }
+                    offlineOverlay.style.display = 'flex';
+                    cardPulse.classList.add('system-muted');
+                    cardBp.classList.add('system-muted');
+                    pulseDisplay.innerText = "--";
+                    bpDisplay.innerText = "--/--";
+                }
+            });
+
+            // ECG Value Live Stream Trace
             database.ref('device_01/liveValue').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val !== null) {
                     latestFirebaseEcg = val;
-                    lastDataTimestamp = Date.now(); 
                 }
             });
 
+            // Vitals Packets Stream Listener
             database.ref('device_01/blood_pressure').on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && isDeviceOnline) {
@@ -520,34 +545,6 @@
                     }
                 }
             });
-
-            setInterval(() => {
-                const timeSinceLastPacket = Date.now() - lastDataTimestamp;
-
-                if (timeSinceLastPacket > 2500) {
-                    if (isDeviceOnline || lastDataTimestamp === 0) {
-                        isDeviceOnline = false;
-                        if (hardwareStatus.innerText !== "AUTH TIMEOUT") {
-                            hardwareStatus.innerText = "ESP32 OFFLINE";
-                            hardwareStatus.className = "status-badge";
-                        }
-                        offlineOverlay.style.display = 'flex';
-                        cardPulse.classList.add('system-muted');
-                        cardBp.classList.add('system-muted');
-                        pulseDisplay.innerText = "--";
-                        bpDisplay.innerText = "--/--";
-                    }
-                } else {
-                    if (!isDeviceOnline) {
-                        isDeviceOnline = true;
-                        hardwareStatus.innerText = "ESP32 ONLINE";
-                        hardwareStatus.className = "status-badge online";
-                        offlineOverlay.style.display = 'none';
-                        cardPulse.classList.remove('system-muted');
-                        cardBp.classList.remove('system-muted');
-                    }
-                }
-            }, 1000); 
         }
     </script>
 </body>
