@@ -15,6 +15,7 @@
             --panel-bg: #111815;
             --grid-color: #1a2922;
             --ecg-glow: #00ff88;
+            --ecg-offline: #22332a;
             --text-gray: #7a8c83;
             --num-bp: #ffb703;
             --num-pulse: #00e5ff;
@@ -167,6 +168,12 @@
             border: 1px solid #1a442d;
         }
 
+        .status-badge.cooldown {
+            background: #2b200d;
+            color: var(--num-bp);
+            border: 1px solid #523e1a;
+        }
+
         .monitor-grid {
             display: grid;
             grid-template-columns: 3fr 1fr;
@@ -241,31 +248,29 @@
             left: 10px;
             right: 10px;
             bottom: 10px;
-            background: rgba(10, 15, 13, 0.85);
+            background: rgba(10, 15, 13, 0.4);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            border: 1px dashed var(--alert-red);
+            pointer-events: none;
             z-index: 10;
-            display: none; 
         }
 
         .device-offline-overlay h3 {
             color: var(--alert-red);
-            letter-spacing: 3px;
-            font-size: 1.5rem;
+            background-color: rgba(17, 24, 21, 0.9);
+            padding: 10px 20px;
+            border: 1px dashed var(--alert-red);
+            letter-spacing: 2px;
+            font-size: 1.1rem;
             margin-bottom: 10px;
-            animation: blinker 1.5s linear infinite;
-        }
-
-        @keyframes blinker {
-            50% { opacity: 0.2; }
+            text-align: center;
         }
 
         .system-muted {
-            filter: grayscale(0.8) blur(1px);
-            opacity: 0.3;
+            filter: grayscale(0.5);
+            opacity: 0.4;
         }
 
         @media (max-width: 900px) {
@@ -291,7 +296,7 @@
                 <input type="password" id="password-input" placeholder="••••••••" value="12345">
             </div>
             
-            <button class="login-btn" onclick="validateAccess()">INITIALIZE LINK</button>
+            <button class="login-btn" onclick="validateAccess()">INITIALIZE MONITOR</button>
             <div id="login-error">ACCESS DENIED: INVALID CLINICAL CREDENTIALS</div>
         </div>
     </div>
@@ -310,15 +315,14 @@
                 <div class="panel-label">ECG Lead II (Real-Time Trace Cascade)</div>
                 
                 <div id="offline-overlay" class="device-offline-overlay">
-                    <h3>NO HARDWARE TELEMETRY SIGNALS DETECTED</h3>
-                    <p style="color: var(--text-gray); font-size: 0.8rem;">RE-ESTABLISHING DEVICE SOCKET OR CHECKING ESP32 POWER...</p>
+                    <h3>WAITING FOR HARDWARE TELEMETRY DATA...</h3>
                 </div>
                 
                 <canvas id="ecgCanvas"></canvas>
             </section>
 
             <section class="vitals-sidebar">
-                <div id="card-pulse" class="vital-card card-pulse">
+                <div id="card-pulse" class="vital-card card-pulse system-muted">
                     <div class="card-header">
                         <span>HR / PR</span>
                         <span>ECG Derived</span>
@@ -327,7 +331,7 @@
                     <div class="unit">BPM</div>
                 </div>
 
-                <div id="card-bp" class="vital-card card-bp">
+                <div id="card-bp" class="vital-card card-bp system-muted">
                     <div class="card-header">
                         <span>NIBP</span>
                         <span>Hardware Package</span>
@@ -349,7 +353,7 @@
         let pointHistory = [];
         let lastDataTimestamp = 0;
         let isDeviceOnline = false;
-        let listenersAttached = false; // Guard flag to prevent double processing logs
+        let listenersAttached = false;
 
         const firebaseConfig = {
             apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
@@ -362,23 +366,19 @@
         };
 
         function validateAccess() {
-            try {
-                const user = document.getElementById('username-input').value;
-                const pass = document.getElementById('password-input').value;
-                const errorMsg = document.getElementById('login-error');
+            const user = document.getElementById('username-input').value;
+            const pass = document.getElementById('password-input').value;
+            const errorMsg = document.getElementById('login-error');
 
-                if (user === "admin" && pass === "12345") {
-                    document.getElementById('login-container').style.display = 'none';
-                    document.getElementById('main-dashboard').style.display = 'block';
-                    
-                    setupGraphicsEngine();
-                    initializeFirebaseStream();
-                } else {
-                    errorMsg.style.display = 'block';
-                    setTimeout(() => { errorMsg.style.display = 'none'; }, 4000);
-                }
-            } catch (err) {
-                alert("Runtime Dashboard Init Fault: " + err.message);
+            if (user === "admin" && pass === "12345") {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('main-dashboard').style.display = 'block';
+                
+                setupGraphicsEngine();
+                initializeFirebaseStream();
+            } else {
+                errorMsg.style.display = 'block';
+                setTimeout(() => { errorMsg.style.display = 'none'; }, 4000);
             }
         }
 
@@ -418,7 +418,7 @@
         }
 
         function renderSweepTrace() {
-            if (isDeviceOnline && canvas) {
+            if (canvas) {
                 const W = canvas.width;
                 const H = canvas.height;
                 const eraseWidth = 25; 
@@ -433,14 +433,17 @@
                 drawGridBackground();
                 ctx.restore();
 
-                let targetY = H - ((latestFirebaseEcg / 4095) * H);
+                // If hardware is offline, generate an active flatline trace with tiny biological noise
+                let currentSignal = isDeviceOnline ? latestFirebaseEcg : (2048 + (Math.random() - 0.5) * 8);
+
+                let targetY = H - ((currentSignal / 4095) * H);
                 let smoothY = lastY + (targetY - lastY) * 0.45;
 
                 if (currentX > 0) {
-                    ctx.strokeStyle = '#00ff88';
+                    ctx.strokeStyle = isDeviceOnline ? 'var(--ecg-glow)' : 'var(--ecg-offline)';
                     ctx.lineWidth = 2.5;
-                    ctx.shadowBlur = 4;
-                    ctx.shadowColor = '#00ff88';
+                    ctx.shadowBlur = isDeviceOnline ? 5 : 0;
+                    ctx.shadowColor = 'var(--ecg-glow)';
                     ctx.beginPath();
                     ctx.moveTo(currentX - targetSpeed, pointHistory[Math.floor(currentX - targetSpeed)] || H/2);
                     ctx.lineTo(currentX, smoothY);
@@ -457,12 +460,9 @@
             requestAnimationFrame(renderSweepTrace);
         }
 
-        // =========================================================================
-        // SAFE FIREBASE AUTH & AUTO PERSISTENCE LAYER
-        // =========================================================================
         function initializeFirebaseStream() {
             if (typeof firebase === 'undefined') {
-                alert("Critical System Intercept: Firebase SDK packages were blocked.");
+                console.error("Firebase SDK script is missing or blocked.");
                 return;
             }
 
@@ -470,27 +470,23 @@
                 firebase.initializeApp(firebaseConfig);
             }
 
-            // Monitor Auth State instead of blindly forcing a new server request
+            // High-efficiency session tracking to prevent constant auth queries
             firebase.auth().onAuthStateChanged((user) => {
                 if (user) {
-                    console.log("Authenticated via persistent session profile.");
                     database = firebase.database();
                     if (!listenersAttached) {
                         attachDataListeners();
                         listenersAttached = true;
                     }
                 } else {
-                    // No cached session found, execute single baseline login request
                     firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
-                        .then(() => {
-                            console.log("New Session Created.");
-                        })
                         .catch((error) => {
+                            const hardwareStatus = document.getElementById('hardware-status');
                             if (error.code === 'auth/too-many-requests') {
-                                alert("Firebase Request Blocked: Connect your computer to a mobile hotspot or wait 15 minutes to clear your IP layout block.");
-                            } else {
-                                alert("Database Authentication Reference Error: " + error.message);
+                                hardwareStatus.innerText = "AUTH COOLDOWN";
+                                hardwareStatus.className = "status-badge cooldown";
                             }
+                            console.warn("Firebase Auth Warning: ", error.message);
                         });
                 }
             });
@@ -522,16 +518,18 @@
                 }
             });
 
+            // Heartbeat watch loop running cleanly inside the background frame
             setInterval(() => {
                 const timeSinceLastPacket = Date.now() - lastDataTimestamp;
 
                 if (timeSinceLastPacket > 2500) {
                     if (isDeviceOnline || lastDataTimestamp === 0) {
                         isDeviceOnline = false;
-                        hardwareStatus.innerText = "ECGLIVEMONITOROFFLINE";
-                        hardwareStatus.classList.remove('online');
+                        if (hardwareStatus.innerText !== "AUTH COOLDOWN") {
+                            hardwareStatus.innerText = "ESP32 OFFLINE";
+                            hardwareStatus.className = "status-badge";
+                        }
                         offlineOverlay.style.display = 'flex';
-                        
                         cardPulse.classList.add('system-muted');
                         cardBp.classList.add('system-muted');
                         pulseDisplay.innerText = "--";
@@ -540,10 +538,9 @@
                 } else {
                     if (!isDeviceOnline) {
                         isDeviceOnline = true;
-                        hardwareStatus.innerText = "ECGLIVEMONITOR ONLINE";
-                        hardwareStatus.add('online');
+                        hardwareStatus.innerText = "ESP32 ONLINE";
+                        hardwareStatus.className = "status-badge online";
                         offlineOverlay.style.display = 'none';
-                        
                         cardPulse.classList.remove('system-muted');
                         cardBp.classList.remove('system-muted');
                     }
