@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Telemetry System - Secure Portal</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0a0f0d;
+            --panel-bg: #111815;
+            --grid-color: #1a2922;
+            --ecg-glow: #00ff88;
+            --text-gray: #7a8c83;
+            --num-bp: #ffb703;
+            --num-pulse: #00e5ff;
+            --alert-red: #ff4d4d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Courier New', Courier, monospace;
+            color: #ffffff;
+            padding: 20px;
+            overflow-x: hidden;
+            height: 100vh;
+        }
+
+        #login-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .login-card {
+            background-color: var(--panel-bg);
+            border: 2px solid var(--grid-color);
+            border-radius: 6px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+        }
+
+        .login-card h2 {
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            color: #e2e8f0;
+            text-align: center;
+        }
+
+        .login-card p {
+            font-size: 0.75rem;
+            color: var(--text-gray);
+            text-align: center;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-gray);
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+
+        .input-group input {
+            width: 100%;
+            background-color: #050807;
+            border: 1px solid var(--grid-color);
+            padding: 12px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 1rem;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: var(--ecg-glow);
+        }
+
+        .login-btn {
+            width: 100%;
+            background-color: transparent;
+            border: 1px solid var(--ecg-glow);
+            color: var(--ecg-glow);
+            padding: 14px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 4px;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .login-btn:hover {
+            background-color: var(--ecg-glow);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px rgba(0,255,136,0.4);
+        }
+
+        #login-error {
+            color: var(--alert-red);
+            font-size: 0.8rem;
+            margin-top: 15px;
+            text-align: center;
+            display: none;
+        }
+
+        #main-dashboard {
+            display: none; 
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--grid-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .system-title h1 { font-size: 1.4rem; letter-spacing: 2px; color: #e2e8f0; }
+        .system-title p { font-size: 0.8rem; color: var(--text-gray); }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            background: #221a1a;
+            color: var(--alert-red);
+            border: 1px solid #442222;
+        }
+
+        .status-badge.online {
+            background: #12221a;
+            color: var(--ecg-glow);
+            border: 1px solid #1a442d;
+        }
+
+        .monitor-grid {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 20px;
+        }
+
+        .waveform-container {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--grid-color);
+            border-radius: 4px;
+            padding: 10px;
+            position: relative;
+        }
+
+        .panel-label {
+            font-size: 0.8rem;
+            color: var(--text-gray);
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 450px;
+            background-color: #050807;
+            border-radius: 2px;
+            transition: filter 0.3s ease;
+        }
+
+        .vitals-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .vital-card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--grid-color);
+            border-radius: 4px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 215px;
+            transition: opacity 0.3s ease;
+        }
+
+        .vital-card .card-header {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-gray);
+            font-size: 0.9rem;
+        }
+
+        .vital-card .value-display {
+            font-size: 5rem;
+            line-height: 1;
+            text-align: right;
+            margin-top: 10px;
+            font-weight: 900;
+        }
+
+        .vital-card .unit { font-size: 1rem; color: var(--text-gray); text-align: right; }
+
+        .card-pulse { border-left: 4px solid var(--num-pulse); }
+        .card-pulse .value-display { color: var(--num-pulse); }
+        
+        .card-bp { border-left: 4px solid var(--num-bp); }
+        .card-bp .value-display { color: var(--num-bp); }
+
+        .device-offline-overlay {
+            position: absolute;
+            top: 45px;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            background: rgba(10, 15, 13, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border: 1px dashed var(--alert-red);
+            z-index: 10;
+            display: none; 
+        }
+
+        .device-offline-overlay h3 {
+            color: var(--alert-red);
+            letter-spacing: 3px;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            animation: blinker 1.5s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0.2; }
+        }
+
+        .system-muted {
+            filter: grayscale(0.8) blur(1px);
+            opacity: 0.3;
+        }
+
+        @media (max-width: 900px) {
+            .monitor-grid { grid-template-columns: 1fr; }
+            canvas { height: 300px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-container">
+        <div class="login-card">
+            <h2>CENTRAL TELEMETRY</h2>
+            <p>Clinical Access Authorization</p>
+            
+            <div class="input-group">
+                <label>CLINICIAN ID / USERNAME</label>
+                <input type="text" id="username-input" placeholder="admin" value="admin">
+            </div>
+            
+            <div class="input-group">
+                <label>ACCESS PASSKEY</label>
+                <input type="password" id="password-input" placeholder="••••••••" value="12345">
+            </div>
+            
+            <button class="login-btn" onclick="validateAccess()">INITIALIZE LINK</button>
+            <div id="login-error">ACCESS DENIED: INVALID CLINICAL CREDENTIALS</div>
+        </div>
+    </div>
+
+    <div id="main-dashboard">
+        <header>
+            <div class="system-title">
+                <h1>CRITICAL CARE TELEMETRY</h1>
+                <p>HARDWARE LINK ID: ESP32_DEVKIT_01</p>
+            </div>
+            <div id="hardware-status" class="status-badge">ESP32 OFFLINE</div>
+        </header>
+
+        <main class="monitor-grid">
+            <section class="waveform-container">
+                <div class="panel-label">ECG Lead II (Real-Time Trace Cascade)</div>
+                
+                <div id="offline-overlay" class="device-offline-overlay">
+                    <h3>NO HARDWARE TELEMETRY SIGNALS DETECTED</h3>
+                    <p style="color: var(--text-gray); font-size: 0.8rem;">RE-ESTABLISHING DEVICE SOCKET OR CHECKING ESP32 POWER...</p>
+                </div>
+                
+                <canvas id="ecgCanvas"></canvas>
+            </section>
+
+            <section class="vitals-sidebar">
+                <div id="card-pulse" class="vital-card card-pulse">
+                    <div class="card-header">
+                        <span>HR / PR</span>
+                        <span>ECG Derived</span>
+                    </div>
+                    <div id="val-pulse" class="value-display">--</div>
+                    <div class="unit">BPM</div>
+                </div>
+
+                <div id="card-bp" class="vital-card card-bp">
+                    <div class="card-header">
+                        <span>NIBP</span>
+                        <span>Hardware Package</span>
+                    </div>
+                    <div id="val-bp" class="value-display">--/--</div>
+                    <div class="unit">mmHg</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // =========================================================================
+        // PORTAL SECURITY GATEKEEPER
+        // =========================================================================
+        function validateAccess() {
+            const user = document.getElementById('username-input').value;
+            const pass = document.getElementById('password-input').value;
+            const errorMsg = document.getElementById('login-error');
+
+            if(user === "admin" && pass === "12345") {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('main-dashboard').style.display = 'block';
+                resizeCanvas(); 
+                initializeFirebaseStream();
+            } else {
+                errorMsg.style.display = 'block';
+                setTimeout(() => { errorMsg.style.display = 'none'; }, 4000);
+            }
+        }
+
+        // =========================================================================
+        // FIREBASE SETTINGS CORE CONFIGURATION
+        // =========================================================================const firebaseConfig = {
+  apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
+  authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
+  databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "blood-pressure-monitorin-2f4c5",
+  storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
+  messagingSenderId: "206648891688",
+  appId: "1:206648891688:web:82f6f64151c4568dfc581d"
+};
+
+        let database;
+        function initializeFirebaseStream() {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+                
+                // Authenticate web client to clear secure rules validation rules
+                firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
+                    .then(() => {
+                        console.log("Web Client Authenticated Successfully.");
+                        database = firebase.database();
+                        attachDataListeners();
+                    })
+                    .catch((error) => {
+                        console.error("Authentication Reference Error: ", error.message);
+                    });
+            }
+        }
+
+        const hardwareStatus = document.getElementById('hardware-status');
+        const offlineOverlay = document.getElementById('offline-overlay');
+        const pulseDisplay = document.getElementById('val-pulse');
+        const bpDisplay = document.getElementById('val-bp');
+        const cardPulse = document.getElementById('card-pulse');
+        const cardBp = document.getElementById('card-bp');
+
+        let lastDataTimestamp = 0;
+        let isDeviceOnline = false;
+
+        // =========================================================================
+        // CANVAS GRAPHING DESIGN ENGINE
+        // =========================================================================
+        const canvas = document.getElementById('ecgCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        let currentX = 0;
+        let lastY = canvas.height / 2;
+        const targetSpeed = 2.5; 
+        let latestFirebaseEcg = 2048; 
+        let pointHistory = new Array(Math.ceil(canvas.width));
+
+        function drawGridBackground() {
+            ctx.strokeStyle = '#14221c';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 25) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 25) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+        }
+
+        function renderSweepTrace() {
+            if (isDeviceOnline) {
+                const W = canvas.width;
+                const H = canvas.height;
+                const eraseWidth = 25; 
+
+                ctx.fillStyle = '#050807';
+                ctx.fillRect(currentX, 0, eraseWidth, H);
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(currentX, 0, eraseWidth, H);
+                ctx.clip();
+                drawGridBackground();
+                ctx.restore();
+
+                let targetY = H - ((latestFirebaseEcg / 4095) * H);
+                let smoothY = lastY + (targetY - lastY) * 0.45;
+
+                if (currentX > 0) {
+                    ctx.strokeStyle = '#00ff88';
+                    ctx.lineWidth = 2.5;
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = '#00ff88';
+                    ctx.beginPath();
+                    ctx.moveTo(currentX - targetSpeed, pointHistory[Math.floor(currentX - targetSpeed)] || H/2);
+                    ctx.lineTo(currentX, smoothY);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
+
+                pointHistory[Math.floor(currentX)] = smoothY;
+                lastY = smoothY;
+
+                currentX += targetSpeed;
+                if (currentX >= W) currentX = 0;
+            }
+            requestAnimationFrame(renderSweepTrace);
+        }
+
+        ctx.fillStyle = '#050807';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawGridBackground();
+        renderSweepTrace();
+
+        // =========================================================================
+        // FIREBASE DATA WORKSPACE CONSUMPTION WATCHDOG
+        // =========================================================================
+        function attachDataListeners() {
+            database.ref('device_01/liveValue').on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null) {
+                    latestFirebaseEcg = val;
+                    lastDataTimestamp = Date.now(); 
+                }
+            });
+
+            database.ref('device_01/blood_pressure').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && isDeviceOnline) {
+                    pulseDisplay.innerText = data.pulse || '--';
+                    if (data.systolic && data.diastolic) {
+                        bpDisplay.innerText = `${data.systolic}/${data.diastolic}`;
+                    }
+                }
+            });
+
+            setInterval(() => {
+                const timeSinceLastPacket = Date.now() - lastDataTimestamp;
+
+                if (timeSinceLastPacket > 2500) {
+                    if (isDeviceOnline || lastDataTimestamp === 0) {
+                        isDeviceOnline = false;
+                        hardwareStatus.innerText = "ECGLIVEMONITOROFFLINE";
+                        hardwareStatus.classList.remove('online');
+                        offlineOverlay.style.display = 'flex';
+                        
+                        cardPulse.classList.add('system-muted');
+                        cardBp.classList.add('system-muted');
+                        pulseDisplay.innerText = "--";
+                        bpDisplay.innerText = "--/--";
+                    }
+                } else {
+                    if (!isDeviceOnline) {
+                        isDeviceOnline = true;
+                        hardwareStatus.innerText = "ECGLIVEMONITOR ONLINE";
+                        hardwareStatus.classList.add('online');
+                        offlineOverlay.style.display = 'none';
+                        
+                        cardPulse.classList.remove('system-muted');
+                        cardBp.classList.remove('system-muted');
+                    }
+                }
+            }, 1000); 
+        }
+    </script>
+</body>
+</html>
