@@ -344,6 +344,11 @@
     </div>
 
     <script>
+        // CRITICAL FAIL-SAFE: Completely intercept and suppress browser alert popups
+        window.alert = function(message) { 
+            console.warn("Suppressed browser popup alert: ", message); 
+        };
+
         let database;
         let canvas, ctx;
         let currentX = 0;
@@ -433,7 +438,6 @@
                 drawGridBackground();
                 ctx.restore();
 
-                // If hardware is offline, generate an active flatline trace with tiny biological noise
                 let currentSignal = isDeviceOnline ? latestFirebaseEcg : (2048 + (Math.random() - 0.5) * 8);
 
                 let targetY = H - ((currentSignal / 4095) * H);
@@ -470,7 +474,7 @@
                 firebase.initializeApp(firebaseConfig);
             }
 
-            // High-efficiency session tracking to prevent constant auth queries
+            // Secure session change tracker (No hardcoded credentials)
             firebase.auth().onAuthStateChanged((user) => {
                 if (user) {
                     database = firebase.database();
@@ -479,14 +483,13 @@
                         listenersAttached = true;
                     }
                 } else {
-                    firebase.auth().signInWithEmailAndPassword("esp32@monitor.com", "monitor123")
+                    // Logs browser tab in as a unique, independent guest to bypass credential firewalls
+                    firebase.auth().signInAnonymously()
                         .catch((error) => {
                             const hardwareStatus = document.getElementById('hardware-status');
-                            if (error.code === 'auth/too-many-requests') {
-                                hardwareStatus.innerText = "AUTH COOLDOWN";
-                                hardwareStatus.className = "status-badge cooldown";
-                            }
-                            console.warn("Firebase Auth Warning: ", error.message);
+                            hardwareStatus.innerText = "AUTH TIMEOUT";
+                            hardwareStatus.className = "status-badge cooldown";
+                            console.warn("Anonymous Auth Catch Block: ", error.message);
                         });
                 }
             });
@@ -518,14 +521,13 @@
                 }
             });
 
-            // Heartbeat watch loop running cleanly inside the background frame
             setInterval(() => {
                 const timeSinceLastPacket = Date.now() - lastDataTimestamp;
 
                 if (timeSinceLastPacket > 2500) {
                     if (isDeviceOnline || lastDataTimestamp === 0) {
                         isDeviceOnline = false;
-                        if (hardwareStatus.innerText !== "AUTH COOLDOWN") {
+                        if (hardwareStatus.innerText !== "AUTH TIMEOUT") {
                             hardwareStatus.innerText = "ESP32 OFFLINE";
                             hardwareStatus.className = "status-badge";
                         }
