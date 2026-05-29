@@ -139,7 +139,7 @@
            MAIN TELEMETRY INTERFACE STYLING
            ========================================================================= */
         #main-dashboard {
-            display: none; /* Hidden until login succeeds */
+            display: none; 
             max-width: 1600px;
             margin: 0 auto;
         }
@@ -156,7 +156,6 @@
         .system-title h1 { font-size: 1.4rem; letter-spacing: 2px; color: #e2e8f0; }
         .system-title p { font-size: 0.8rem; color: var(--text-gray); }
 
-        /* Status Badges */
         .status-badge {
             padding: 6px 12px;
             border-radius: 3px;
@@ -260,7 +259,7 @@
             align-items: center;
             border: 1px dashed var(--alert-red);
             z-index: 10;
-            display: none; /* Controlled via JS Watchdog */
+            display: none; 
         }
 
         .device-offline-overlay h3 {
@@ -275,7 +274,6 @@
             50% { opacity: 0.2; }
         }
 
-        /* Blurs elements when device drops */
         .system-muted {
             filter: grayscale(0.8) blur(1px);
             opacity: 0.3;
@@ -361,11 +359,10 @@
             const pass = document.getElementById('password-input').value;
             const errorMsg = document.getElementById('login-error');
 
-            // Replace these strings with your desired professional credentials
             if(user === "admin" && pass === "12345") {
                 document.getElementById('login-container').style.display = 'none';
                 document.getElementById('main-dashboard').style.display = 'block';
-                resizeCanvas(); // Ensure canvas matches layout scale correctly
+                resizeCanvas(); 
                 initializeFirebaseStream();
             } else {
                 errorMsg.style.display = 'block';
@@ -374,16 +371,18 @@
         }
 
         // =========================================================================
-        // FIREBASE SETTINGS CORE CONFIGURATION
-        // =========================================================================const firebaseConfig = {
-  apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
-  authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
-  databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "blood-pressure-monitorin-2f4c5",
-  storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
-  messagingSenderId: "206648891688",
-  appId: "1:206648891688:web:82f6f64151c4568dfc581d"
-};
+        // FIREBASE SETTINGS CORE CONFIGURATION (Fixed Line Wrap Error)
+        // =========================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDxs2vaedG-cp39TkgRLjbdJIcXMlDth4Q",
+            authDomain: "blood-pressure-monitorin-2f4c5.firebaseapp.com",
+            databaseURL: "https://blood-pressure-monitorin-2f4c5-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "blood-pressure-monitorin-2f4c5",
+            storageBucket: "blood-pressure-monitorin-2f4c5.firebasestorage.app",
+            messagingSenderId: "206648891688",
+            appId: "1:206648891688:web:82f6f64151c4568dfc581d"
+        };
+
         let database;
         function initializeFirebaseStream() {
             if (!firebase.apps.length) {
@@ -393,7 +392,7 @@
             }
         }
 
-        // UI Target Nodes
+        // UI Target DOM Registry
         const hardwareStatus = document.getElementById('hardware-status');
         const offlineOverlay = document.getElementById('offline-overlay');
         const pulseDisplay = document.getElementById('val-pulse');
@@ -401,12 +400,12 @@
         const cardPulse = document.getElementById('card-pulse');
         const cardBp = document.getElementById('card-bp');
 
-        // Watchdog Tracking State Variables
+        // Watchdog Execution Fields
         let lastDataTimestamp = 0;
         let isDeviceOnline = false;
 
         // =========================================================================
-        // CANVASE GRAPHING DESIGN LAYOUT
+        // CANVAS GRAPHING DESIGN ENGINE
         // =========================================================================
         const canvas = document.getElementById('ecgCanvas');
         const ctx = canvas.getContext('2d');
@@ -438,7 +437,6 @@
         // REAL-TIME RENDER LOOP WITH WATCHDOG INTEGRATION
         // =========================================================================
         function renderSweepTrace() {
-            // Only update trace movements if hardware link data streams are active
             if (isDeviceOnline) {
                 const W = canvas.width;
                 const H = canvas.height;
@@ -478,7 +476,7 @@
             requestAnimationFrame(renderSweepTrace);
         }
 
-        // Initial setup for the background grid
+        // Initialize static elements inside preview matrix before connection lifecycle runs
         ctx.fillStyle = '#050807';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         drawGridBackground();
@@ -488,16 +486,16 @@
         // FIREBASE DATA WORKSPACE CONSUMPTION WATCHDOG
         // =========================================================================
         function attachDataListeners() {
-            // Monitor real-time streaming values
+            // High frequency realtime trace link
             database.ref('device_01/liveValue').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val !== null) {
                     latestFirebaseEcg = val;
-                    lastDataTimestamp = Date.now(); // Update timestamp on every incoming packet
+                    lastDataTimestamp = Date.now(); 
                 }
             });
 
-            // Monitor aggregated slow-moving updates (Blood Pressure & Pulse Rate)
+            // Standard telemetry registers
             database.ref('device_01/blood_pressure').on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && isDeviceOnline) {
@@ -508,18 +506,13 @@
                 }
             });
 
-            // -------------------------------------------------------------------------
-            // THE CRITICAL HARDWARE WATCHDOG ENGINE
-            // -------------------------------------------------------------------------
+            // 2.5s Timeout Evaluation Execution Loop
             setInterval(() => {
                 const timeSinceLastPacket = Date.now() - lastDataTimestamp;
 
-                // If no incoming data has arrived for over 2.5 seconds, flag the hardware as offline
                 if (timeSinceLastPacket > 2500) {
                     if (isDeviceOnline || lastDataTimestamp === 0) {
                         isDeviceOnline = false;
-                        
-                        // Apply clinical alert layout transformations
                         hardwareStatus.innerText = "ECGLIVEMONITOROFFLINE";
                         hardwareStatus.classList.remove('online');
                         offlineOverlay.style.display = 'flex';
@@ -530,7 +523,6 @@
                         bpDisplay.innerText = "--/--";
                     }
                 } else {
-                    // Data stream is active; switch layout to Online mode
                     if (!isDeviceOnline) {
                         isDeviceOnline = true;
                         hardwareStatus.innerText = "ECGLIVEMONITOR ONLINE";
@@ -541,7 +533,7 @@
                         cardBp.classList.remove('system-muted');
                     }
                 }
-            }, 1000); // Check stream status every 1 second
+            }, 1000); 
         }
     </script>
 </body>
